@@ -1,0 +1,11 @@
+stravalib>=1.5.0
+withings-api>=2.3.0
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.30
+apscheduler>=3.10.4
+python-dotenv>=1.0.1
+requests>=2.31.0
+scipy>=1.13.0
+pandas>=2.2.0
+pytest>=8.2.0
+pytest-mock>=3.14.0
