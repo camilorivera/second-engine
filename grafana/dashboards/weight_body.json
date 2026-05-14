@@ -140,22 +140,56 @@
     },
     {
       "id": 7,
-      "title": "Body Fat % Trend",
+      "title": "Body Fat % Trend + 6-Month Projection",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 10 },
       "datasource": { "type": "postgres", "uid": "PostgreSQL" },
-      "targets": [{
-        "rawSql": "SELECT measured_at::timestamptz AS time, body_fat_pct AS \"Body Fat %\" FROM body_metrics WHERE body_fat_pct IS NOT NULL ORDER BY measured_at",
-        "format": "time_series",
-        "refId": "A"
-      }],
-      "fieldConfig": { "defaults": { "unit": "percent", "color": { "fixedColor": "orange", "mode": "fixed" } } }
+      "targets": [
+        {
+          "rawSql": "SELECT measured_at::timestamptz AS time, body_fat_pct AS \"Body Fat %\" FROM body_metrics WHERE body_fat_pct IS NOT NULL ORDER BY measured_at",
+          "format": "time_series",
+          "refId": "A"
+        },
+        {
+          "rawSql": "SELECT measured_at::timestamptz AS time, ROUND(AVG(body_fat_pct) OVER (ORDER BY measured_at ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)::numeric, 2) AS \"7-day Avg\" FROM body_metrics WHERE body_fat_pct IS NOT NULL ORDER BY measured_at",
+          "format": "time_series",
+          "refId": "B"
+        },
+        {
+          "rawSql": "WITH params AS (SELECT regr_slope(body_fat_pct, EXTRACT(EPOCH FROM measured_at::timestamptz)) AS slope, regr_intercept(body_fat_pct, EXTRACT(EPOCH FROM measured_at::timestamptz)) AS intercept FROM body_metrics WHERE body_fat_pct IS NOT NULL AND measured_at >= CURRENT_DATE - INTERVAL '90 days'), dates AS (SELECT generate_series(CURRENT_DATE, CURRENT_DATE + INTERVAL '6 months', INTERVAL '7 days')::date AS d) SELECT d AS time, ROUND((intercept + slope * EXTRACT(EPOCH FROM d::timestamptz))::numeric, 1) AS \"Projection\" FROM dates, params ORDER BY d",
+          "format": "time_series",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percent" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Body Fat %" },
+            "properties": [{ "id": "custom.lineWidth", "value": 1 }, { "id": "custom.fillOpacity", "value": 5 }, { "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "7-day Avg" },
+            "properties": [{ "id": "custom.lineWidth", "value": 3 }, { "id": "color", "value": { "fixedColor": "dark-orange", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Projection" },
+            "properties": [
+              { "id": "custom.lineWidth", "value": 2 },
+              { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } },
+              { "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } },
+              { "id": "custom.fillOpacity", "value": 10 }
+            ]
+          }
+        ]
+      },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
       "id": 8,
       "title": "Resting HR Trend",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 26, "w": 24, "h": 8 },
       "datasource": { "type": "postgres", "uid": "PostgreSQL" },
       "targets": [{
         "rawSql": "SELECT date::timestamptz AS time, resting_hr_bpm AS \"Resting HR\" FROM resting_hr_daily ORDER BY date",
@@ -168,7 +202,7 @@
       "id": 9,
       "title": "Monthly Weight Progress",
       "type": "table",
-      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
+      "gridPos": { "x": 0, "y": 34, "w": 24, "h": 8 },
       "datasource": { "type": "postgres", "uid": "PostgreSQL" },
       "targets": [{
         "rawSql": "SELECT TO_CHAR(date_trunc('month', measured_at), 'YYYY-MM') AS \"Month\", ROUND(AVG(weight_kg)::numeric,1) AS \"Avg Weight (kg)\", ROUND(MIN(weight_kg)::numeric,1) AS \"Min\", ROUND(MAX(weight_kg)::numeric,1) AS \"Max\", ROUND(AVG(body_fat_pct)::numeric,1) AS \"Avg Body Fat %\", ROUND(AVG(weight_kg / (1.78 * 1.78))::numeric,1) AS \"Avg BMI\" FROM body_metrics WHERE weight_kg IS NOT NULL GROUP BY 1 ORDER BY 1 DESC LIMIT 24",
