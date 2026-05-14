@@ -5,7 +5,7 @@
   "timezone": "browser",
   "schemaVersion": 38,
   "refresh": "1h",
-  "time": { "from": "now-1y", "to": "now" },
+  "time": { "from": "now-1y", "to": "now+6M" },
   "panels": [
     {
       "id": 1,
@@ -23,26 +23,40 @@
     },
     {
       "id": 2,
-      "title": "Body Fat %",
+      "title": "Projected (3 months)",
       "type": "stat",
       "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
       "datasource": { "type": "postgres", "uid": "PostgreSQL" },
       "targets": [{
-        "rawSql": "SELECT body_fat_pct AS value FROM body_metrics WHERE body_fat_pct IS NOT NULL ORDER BY measured_at DESC LIMIT 1",
+        "rawSql": "WITH params AS (SELECT regr_slope(weight_kg, EXTRACT(EPOCH FROM measured_at::timestamptz)) AS slope, regr_intercept(weight_kg, EXTRACT(EPOCH FROM measured_at::timestamptz)) AS intercept FROM body_metrics WHERE weight_kg IS NOT NULL AND measured_at >= CURRENT_DATE - INTERVAL '90 days') SELECT ROUND((intercept + slope * EXTRACT(EPOCH FROM (CURRENT_DATE + INTERVAL '3 months')::timestamptz))::numeric, 1) AS value FROM params",
         "format": "table",
         "refId": "A"
       }],
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none" },
-      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1, "displayName": "Body Fat %" } }
+      "fieldConfig": { "defaults": { "unit": "kg", "decimals": 1, "displayName": "Projected 3M" } }
     },
     {
       "id": 3,
-      "title": "BMI",
+      "title": "Projected (6 months)",
       "type": "stat",
       "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
       "datasource": { "type": "postgres", "uid": "PostgreSQL" },
       "targets": [{
-        "rawSql": "SELECT ROUND(bmi::numeric, 1) AS value FROM body_metrics WHERE bmi IS NOT NULL ORDER BY measured_at DESC LIMIT 1",
+        "rawSql": "WITH params AS (SELECT regr_slope(weight_kg, EXTRACT(EPOCH FROM measured_at::timestamptz)) AS slope, regr_intercept(weight_kg, EXTRACT(EPOCH FROM measured_at::timestamptz)) AS intercept FROM body_metrics WHERE weight_kg IS NOT NULL AND measured_at >= CURRENT_DATE - INTERVAL '90 days') SELECT ROUND((intercept + slope * EXTRACT(EPOCH FROM (CURRENT_DATE + INTERVAL '6 months')::timestamptz))::numeric, 1) AS value FROM params",
+        "format": "table",
+        "refId": "A"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "kg", "decimals": 1, "displayName": "Projected 6M" } }
+    },
+    {
+      "id": 13,
+      "title": "BMI",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [{
+        "rawSql": "SELECT ROUND((weight_kg / (1.78 * 1.78))::numeric, 1) AS value FROM body_metrics WHERE weight_kg IS NOT NULL ORDER BY measured_at DESC LIMIT 1",
         "format": "table",
         "refId": "A"
       }],
@@ -53,7 +67,7 @@
       "id": 4,
       "title": "Weight Lost (total)",
       "type": "stat",
-      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
       "datasource": { "type": "postgres", "uid": "PostgreSQL" },
       "targets": [{
         "rawSql": "SELECT ROUND((MAX(weight_kg) - MIN(weight_kg))::numeric, 1) AS value FROM body_metrics WHERE weight_kg IS NOT NULL",
@@ -65,9 +79,9 @@
     },
     {
       "id": 5,
-      "title": "Resting HR (latest)",
+      "title": "Resting HR",
       "type": "stat",
-      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
       "datasource": { "type": "postgres", "uid": "PostgreSQL" },
       "targets": [{
         "rawSql": "SELECT resting_hr_bpm AS value FROM resting_hr_daily ORDER BY date DESC LIMIT 1",
@@ -75,24 +89,29 @@
         "refId": "A"
       }],
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none" },
-      "fieldConfig": { "defaults": { "unit": "bpm", "displayName": "Resting HR" } }
+      "fieldConfig": { "defaults": { "unit": "bpm", "decimals": 0, "displayName": "Resting HR" } }
     },
     {
       "id": 6,
-      "title": "Weight Trend",
+      "title": "Weight Trend + 6-Month Projection",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 10 },
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 12 },
       "datasource": { "type": "postgres", "uid": "PostgreSQL" },
       "targets": [
         {
-          "rawSql": "SELECT measured_at AS time, weight_kg AS \"Weight\" FROM body_metrics WHERE weight_kg IS NOT NULL ORDER BY measured_at",
+          "rawSql": "SELECT measured_at::timestamptz AS time, weight_kg AS \"Weight\" FROM body_metrics WHERE weight_kg IS NOT NULL ORDER BY measured_at",
           "format": "time_series",
           "refId": "A"
         },
         {
-          "rawSql": "SELECT measured_at AS time, ROUND(AVG(weight_kg) OVER (ORDER BY measured_at ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)::numeric, 2) AS \"7-day Avg\" FROM body_metrics WHERE weight_kg IS NOT NULL ORDER BY measured_at",
+          "rawSql": "SELECT measured_at::timestamptz AS time, ROUND(AVG(weight_kg) OVER (ORDER BY measured_at ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)::numeric, 2) AS \"7-day Avg\" FROM body_metrics WHERE weight_kg IS NOT NULL ORDER BY measured_at",
           "format": "time_series",
           "refId": "B"
+        },
+        {
+          "rawSql": "WITH params AS (SELECT regr_slope(weight_kg, EXTRACT(EPOCH FROM measured_at::timestamptz)) AS slope, regr_intercept(weight_kg, EXTRACT(EPOCH FROM measured_at::timestamptz)) AS intercept FROM body_metrics WHERE weight_kg IS NOT NULL AND measured_at >= CURRENT_DATE - INTERVAL '90 days'), dates AS (SELECT generate_series(CURRENT_DATE, CURRENT_DATE + INTERVAL '6 months', INTERVAL '7 days')::date AS d) SELECT d AS time, ROUND((intercept + slope * EXTRACT(EPOCH FROM d::timestamptz))::numeric, 1) AS \"Projection\" FROM dates, params ORDER BY d",
+          "format": "time_series",
+          "refId": "C"
         }
       ],
       "fieldConfig": {
@@ -105,19 +124,28 @@
           {
             "matcher": { "id": "byName", "options": "7-day Avg" },
             "properties": [{ "id": "custom.lineWidth", "value": 3 }, { "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Projection" },
+            "properties": [
+              { "id": "custom.lineWidth", "value": 2 },
+              { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } },
+              { "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } },
+              { "id": "custom.fillOpacity", "value": 10 }
+            ]
           }
         ]
       },
-      "options": { "tooltip": { "mode": "multi" } }
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
       "id": 7,
       "title": "Body Fat % Trend",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
       "datasource": { "type": "postgres", "uid": "PostgreSQL" },
       "targets": [{
-        "rawSql": "SELECT measured_at AS time, body_fat_pct AS \"Body Fat %\" FROM body_metrics WHERE body_fat_pct IS NOT NULL ORDER BY measured_at",
+        "rawSql": "SELECT measured_at::timestamptz AS time, body_fat_pct AS \"Body Fat %\" FROM body_metrics WHERE body_fat_pct IS NOT NULL ORDER BY measured_at",
         "format": "time_series",
         "refId": "A"
       }],
@@ -127,10 +155,10 @@
       "id": 8,
       "title": "Resting HR Trend",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
       "datasource": { "type": "postgres", "uid": "PostgreSQL" },
       "targets": [{
-        "rawSql": "SELECT date AS time, resting_hr_bpm AS \"Resting HR\" FROM resting_hr_daily ORDER BY date",
+        "rawSql": "SELECT date::timestamptz AS time, resting_hr_bpm AS \"Resting HR\" FROM resting_hr_daily ORDER BY date",
         "format": "time_series",
         "refId": "A"
       }],
@@ -140,10 +168,10 @@
       "id": 9,
       "title": "Monthly Weight Progress",
       "type": "table",
-      "gridPos": { "x": 0, "y": 22, "w": 24, "h": 8 },
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
       "datasource": { "type": "postgres", "uid": "PostgreSQL" },
       "targets": [{
-        "rawSql": "SELECT TO_CHAR(date_trunc('month', measured_at), 'YYYY-MM') AS \"Month\", ROUND(AVG(weight_kg)::numeric,1) AS \"Avg Weight (kg)\", ROUND(MIN(weight_kg)::numeric,1) AS \"Min\", ROUND(MAX(weight_kg)::numeric,1) AS \"Max\", ROUND(AVG(body_fat_pct)::numeric,1) AS \"Avg Body Fat %\", ROUND(AVG(bmi)::numeric,1) AS \"Avg BMI\" FROM body_metrics WHERE weight_kg IS NOT NULL GROUP BY 1 ORDER BY 1 DESC LIMIT 24",
+        "rawSql": "SELECT TO_CHAR(date_trunc('month', measured_at), 'YYYY-MM') AS \"Month\", ROUND(AVG(weight_kg)::numeric,1) AS \"Avg Weight (kg)\", ROUND(MIN(weight_kg)::numeric,1) AS \"Min\", ROUND(MAX(weight_kg)::numeric,1) AS \"Max\", ROUND(AVG(body_fat_pct)::numeric,1) AS \"Avg Body Fat %\", ROUND(AVG(weight_kg / (1.78 * 1.78))::numeric,1) AS \"Avg BMI\" FROM body_metrics WHERE weight_kg IS NOT NULL GROUP BY 1 ORDER BY 1 DESC LIMIT 24",
         "format": "table",
         "refId": "A"
       }],

@@ -1,4 +1,4 @@
-.PHONY: setup scan scan-images scan-deps up down logs test test-unit test-integration auth-strava auth-withings
+.PHONY: setup scan scan-images scan-deps up down logs test test-unit test-integration auth-strava auth-withings add-resting-hr
 
 setup: ## Install pre-commit Trivy hook and copy .env.example
 	@cp -n .env.example .env 2>/dev/null && echo "Created .env from .env.example" || echo ".env already exists"
@@ -44,6 +44,9 @@ auth-strava: ## Run Strava OAuth setup
 
 auth-withings: ## Run Withings OAuth setup
 	python setup/auth.py withings
+
+add-resting-hr: ## Record manual resting HR — usage: make add-resting-hr BPM=58
+	docker compose run --rm worker python scripts/add_resting_hr.py --bpm $(BPM)
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
