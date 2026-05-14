@@ -7,4 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+RUN useradd --no-create-home --shell /bin/false appuser
+USER appuser
+
 CMD ["python", "main.py"]

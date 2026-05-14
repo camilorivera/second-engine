@@ -113,9 +113,10 @@ def _fetch_resting_hr(headers: dict, startdate: int | None = None) -> list[dict]
 
 def _store_resting_hr(session, series: list[dict]) -> None:
     for entry in series:
-        if "heart_rate" not in entry:
+        hr = entry.get("heart_rate")
+        if hr is None:
             continue
-        resting = entry["heart_rate"].get("resting")
+        resting = hr if isinstance(hr, int) else hr.get("resting") if isinstance(hr, dict) else None
         if resting is None:
             continue
         date = time.strftime("%Y-%m-%d", time.gmtime(entry["timestamp"]))

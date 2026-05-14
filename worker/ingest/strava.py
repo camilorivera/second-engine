@@ -63,11 +63,10 @@ def _upsert_activity(session, a: dict) -> str | None:
         text("""
             INSERT INTO activities
                 (strava_id, sport, start_time, duration_secs, distance_m,
-                 elevation_m, avg_hr, max_hr, avg_pace_spm, calories, sport_data)
+                 elevation_m, avg_hr, max_hr, avg_pace_spm, calories)
             VALUES
                 (:strava_id, :sport, :start_time, :duration_secs, :distance_m,
-                 :elevation_m, :avg_hr, :max_hr, :avg_pace_spm, :calories,
-                 :sport_data::jsonb)
+                 :elevation_m, :avg_hr, :max_hr, :avg_pace_spm, :calories)
             ON CONFLICT (strava_id) DO UPDATE SET
                 avg_hr = EXCLUDED.avg_hr,
                 max_hr = EXCLUDED.max_hr,
@@ -85,7 +84,6 @@ def _upsert_activity(session, a: dict) -> str | None:
             "max_hr": a.get("max_heartrate"),
             "avg_pace_spm": avg_pace_spm,
             "calories": a.get("calories"),
-            "sport_data": "{}",
         },
     ).fetchone()
     session.commit()

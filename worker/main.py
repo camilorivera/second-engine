@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import threading
 import time
 
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -18,28 +19,38 @@ logger = logging.getLogger(__name__)
 SYNC_INTERVAL_HOURS = int(os.getenv("SYNC_INTERVAL_HOURS", "1"))
 ANALYTICS_INTERVAL_HOURS = int(os.getenv("ANALYTICS_INTERVAL_HOURS", "6"))
 
-_initial_sync_done = False
-
-
 def run_ingest() -> None:
-    global _initial_sync_done
     from ingest import strava, withings
+    from db import get_session, get_sync_state
 
-    full = not _initial_sync_done
+    session = get_session()
+    already_synced = bool(get_sync_state(session, "strava_last_sync_ts"))
+    session.close()
+
+    full = not already_synced
     if full:
         logger.info("Running full historical sync...")
+    else:
+        logger.info("Running incremental sync...")
 
-    try:
-        strava.sync(full=full)
-    except Exception:
-        logger.exception("Strava sync failed")
+    def _strava():
+        try:
+            strava.sync(full=full)
+        except Exception:
+            logger.exception("Strava sync failed")
 
-    try:
-        withings.sync(full=full)
-    except Exception:
-        logger.exception("Withings sync failed")
+    def _withings():
+        try:
+            withings.sync(full=full)
+        except Exception:
+            logger.exception("Withings sync failed")
 
-    _initial_sync_done = True
+    t1 = threading.Thread(target=_strava, daemon=True)
+    t2 = threading.Thread(target=_withings, daemon=True)
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
 
 
 def run_analytics() -> None:

@@ -2,30 +2,29 @@
 One-time OAuth bootstrap for Strava and Withings.
 
 Usage:
-    python setup/auth.py strava
-    python setup/auth.py withings
-    python setup/auth.py all
+    python3 setup/auth.py strava
+    python3 setup/auth.py withings
+    python3 setup/auth.py all
 
-Writes refresh tokens to .env in the project root.
-Requires STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET (or WITHINGS equivalents)
-to already be present in .env before running.
+Stdlib only — no pip installs required.
+Writes refresh tokens directly to .env in the project root.
 """
 import http.server
+import json
 import os
+import secrets
 import sys
 import threading
 import urllib.parse
+import urllib.request
 import webbrowser
 from pathlib import Path
-
-import requests
-from dotenv import dotenv_values, set_key
 
 ROOT = Path(__file__).parent.parent
 ENV_FILE = ROOT / ".env"
 
 REDIRECT_PORT = 8888
-REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/callback"
+REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}"
 
 _auth_code: str | None = None
 _server_done = threading.Event()
@@ -64,103 +63,118 @@ def _run_local_server() -> None:
 def _load_env() -> dict:
     if not ENV_FILE.exists():
         sys.exit(f".env not found at {ENV_FILE}. Run: cp .env.example .env")
-    return dotenv_values(ENV_FILE)
+    env: dict = {}
+    for line in ENV_FILE.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, _, v = line.partition("=")
+            env[k.strip()] = v.strip()
+    return env
 
 
 def _save_token(key: str, value: str) -> None:
-    set_key(str(ENV_FILE), key, value)
+    text = ENV_FILE.read_text()
+    lines = text.splitlines()
+    updated = False
+    for i, line in enumerate(lines):
+        if line.startswith(f"{key}=") or line.startswith(f"{key} ="):
+            lines[i] = f"{key}={value}"
+            updated = True
+            break
+    if not updated:
+        lines.append(f"{key}={value}")
+    ENV_FILE.write_text("\n".join(lines) + "\n")
     print(f"  Saved {key} to .env")
 
 
+def _post_form(url: str, data: dict) -> dict:
+    encoded = urllib.parse.urlencode(data).encode()
+    req = urllib.request.Request(url, data=encoded, method="POST")
+    req.add_header("Content-Type", "application/x-www-form-urlencoded")
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _reset_callback() -> None:
+    global _auth_code, _server_done
+    _auth_code = None
+    _server_done = threading.Event()
+
+
 def auth_strava() -> None:
+    _reset_callback()
     env = _load_env()
-    client_id = env.get("STRAVA_CLIENT_ID") or os.getenv("STRAVA_CLIENT_ID")
-    client_secret = env.get("STRAVA_CLIENT_SECRET") or os.getenv("STRAVA_CLIENT_SECRET")
+    client_id = env.get("STRAVA_CLIENT_ID") or os.getenv("STRAVA_CLIENT_ID", "")
+    client_secret = env.get("STRAVA_CLIENT_SECRET") or os.getenv("STRAVA_CLIENT_SECRET", "")
 
     if not client_id or not client_secret:
-        sys.exit("STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET must be set in .env first.")
+        sys.exit("Set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET in .env first.")
 
-    auth_url = (
-        f"https://www.strava.com/oauth/authorize"
-        f"?client_id={client_id}"
-        f"&redirect_uri={urllib.parse.quote(REDIRECT_URI)}"
-        f"&response_type=code"
-        f"&scope=read,activity:read_all"
-    )
+    params = urllib.parse.urlencode({
+        "client_id": client_id,
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code",
+        "scope": "read,activity:read_all",
+    })
+    auth_url = f"https://www.strava.com/oauth/authorize?{params}"
 
     print("Opening browser for Strava authorization...")
     print(f"If browser doesn't open, visit:\n  {auth_url}\n")
 
-    thread = threading.Thread(target=_run_local_server, daemon=True)
-    thread.start()
+    threading.Thread(target=_run_local_server, daemon=True).start()
     webbrowser.open(auth_url)
     _server_done.wait(timeout=120)
 
     if not _auth_code:
-        sys.exit("No auth code received. Check the browser for errors.")
+        sys.exit("No auth code received.")
 
-    resp = requests.post(
-        "https://www.strava.com/oauth/token",
-        data={
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "code": _auth_code,
-            "grant_type": "authorization_code",
-        },
-        timeout=15,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-
+    data = _post_form("https://www.strava.com/oauth/token", {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": _auth_code,
+        "grant_type": "authorization_code",
+    })
     _save_token("STRAVA_REFRESH_TOKEN", data["refresh_token"])
     print("Strava auth complete.")
 
 
 def auth_withings() -> None:
-    global _auth_code, _server_done
-    _auth_code = None
-    _server_done = threading.Event()
-
+    _reset_callback()
     env = _load_env()
-    client_id = env.get("WITHINGS_CLIENT_ID") or os.getenv("WITHINGS_CLIENT_ID")
-    client_secret = env.get("WITHINGS_CLIENT_SECRET") or os.getenv("WITHINGS_CLIENT_SECRET")
+    client_id = env.get("WITHINGS_CLIENT_ID") or os.getenv("WITHINGS_CLIENT_ID", "")
+    client_secret = env.get("WITHINGS_CLIENT_SECRET") or os.getenv("WITHINGS_CLIENT_SECRET", "")
 
     if not client_id or not client_secret:
-        sys.exit("WITHINGS_CLIENT_ID and WITHINGS_CLIENT_SECRET must be set in .env first.")
+        sys.exit("Set WITHINGS_CLIENT_ID and WITHINGS_CLIENT_SECRET in .env first.")
 
-    auth_url = (
-        f"https://account.withings.com/oauth2_user/authorize2"
-        f"?client_id={client_id}"
-        f"&redirect_uri={urllib.parse.quote(REDIRECT_URI)}"
-        f"&response_type=code"
-        f"&scope=user.metrics,user.activity"
-    )
+    state = secrets.token_urlsafe(16)
+    params = urllib.parse.urlencode({
+        "client_id": client_id,
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code",
+        "scope": "user.metrics,user.activity",
+        "state": state,
+    })
+    auth_url = f"https://account.withings.com/oauth2_user/authorize2?{params}"
 
     print("Opening browser for Withings authorization...")
     print(f"If browser doesn't open, visit:\n  {auth_url}\n")
 
-    thread = threading.Thread(target=_run_local_server, daemon=True)
-    thread.start()
+    threading.Thread(target=_run_local_server, daemon=True).start()
     webbrowser.open(auth_url)
     _server_done.wait(timeout=120)
 
     if not _auth_code:
-        sys.exit("No auth code received. Check the browser for errors.")
+        sys.exit("No auth code received.")
 
-    resp = requests.post(
-        "https://wbsapi.withings.net/v2/oauth2",
-        data={
-            "action": "requesttoken",
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "code": _auth_code,
-            "grant_type": "authorization_code",
-            "redirect_uri": REDIRECT_URI,
-        },
-        timeout=15,
-    )
-    resp.raise_for_status()
-    body = resp.json()
+    body = _post_form("https://wbsapi.withings.net/v2/oauth2", {
+        "action": "requesttoken",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": _auth_code,
+        "grant_type": "authorization_code",
+        "redirect_uri": REDIRECT_URI,
+    })
     if body.get("status") != 0:
         sys.exit(f"Withings token exchange failed: {body}")
 

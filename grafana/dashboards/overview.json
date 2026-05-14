@@ -1,0 +1,118 @@
+{
+  "uid": "second-engine-overview",
+  "title": "Overview",
+  "tags": ["second-engine"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "5m",
+  "time": { "from": "now-90d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total Activities",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [{
+        "rawSql": "SELECT COUNT(*) AS value FROM activities WHERE sport = 'run'",
+        "format": "table",
+        "refId": "A"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "displayName": "Total Runs" } }
+    },
+    {
+      "id": 2,
+      "title": "Total Distance (km)",
+      "type": "stat",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [{
+        "rawSql": "SELECT ROUND((SUM(distance_m) / 1000)::numeric, 1) AS value FROM activities WHERE sport = 'run' AND distance_m IS NOT NULL",
+        "format": "table",
+        "refId": "A"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "km", "displayName": "Total Distance" } }
+    },
+    {
+      "id": 3,
+      "title": "Avg HR (last 30 days)",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [{
+        "rawSql": "SELECT ROUND(AVG(avg_hr)::numeric, 0) AS value FROM activities WHERE sport = 'run' AND avg_hr IS NOT NULL AND start_time >= NOW() - INTERVAL '30 days'",
+        "format": "table",
+        "refId": "A"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "bpm", "displayName": "Avg HR (30d)" } }
+    },
+    {
+      "id": 4,
+      "title": "Runs This Month",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [{
+        "rawSql": "SELECT COUNT(*) AS value FROM activities WHERE sport = 'run' AND date_trunc('month', start_time) = date_trunc('month', NOW())",
+        "format": "table",
+        "refId": "A"
+      }],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "short", "displayName": "Runs This Month" } }
+    },
+    {
+      "id": 5,
+      "title": "Weekly Distance (km)",
+      "type": "barchart",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [{
+        "rawSql": "SELECT date_trunc('week', start_time) AS time, ROUND((SUM(distance_m)/1000)::numeric,1) AS \"km\" FROM activities WHERE sport = 'run' AND distance_m IS NOT NULL AND start_time >= NOW() - INTERVAL '26 weeks' GROUP BY 1 ORDER BY 1",
+        "format": "table",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "km", "color": { "mode": "fixed", "fixedColor": "blue" } }
+      },
+      "options": { "xField": "time" }
+    },
+    {
+      "id": 6,
+      "title": "Weekly Duration (hours)",
+      "type": "barchart",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [{
+        "rawSql": "SELECT date_trunc('week', start_time) AS time, ROUND((SUM(duration_secs)/3600.0)::numeric,2) AS \"hours\" FROM activities WHERE sport = 'run' AND start_time >= NOW() - INTERVAL '26 weeks' GROUP BY 1 ORDER BY 1",
+        "format": "table",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": { "unit": "h", "color": { "mode": "fixed", "fixedColor": "green" } }
+      },
+      "options": { "xField": "time" }
+    },
+    {
+      "id": 7,
+      "title": "Recent Runs",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 10 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL" },
+      "targets": [{
+        "rawSql": "SELECT start_time AS \"Date\", ROUND((distance_m/1000)::numeric,2) AS \"Distance (km)\", ROUND((duration_secs/60.0)::numeric,0) AS \"Duration (min)\", avg_hr AS \"Avg HR\", max_hr AS \"Max HR\", CASE WHEN avg_pace_spm IS NOT NULL THEN CONCAT(FLOOR(avg_pace_spm/60)::int, ':', LPAD((ROUND(avg_pace_spm)::int % 60)::text, 2, '0')) END AS \"Avg Pace (min/km)\", ROUND(elevation_m::numeric,0) AS \"Elevation (m)\" FROM activities WHERE sport = 'run' ORDER BY start_time DESC LIMIT 20",
+        "format": "table",
+        "refId": "A"
+      }],
+      "options": { "sortBy": [{ "displayName": "Date", "desc": true }] },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Date" }, "properties": [{ "id": "custom.width", "value": 180 }] }
+        ]
+      }
+    }
+  ]
+}
