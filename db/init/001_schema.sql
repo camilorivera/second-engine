@@ -47,7 +47,7 @@ CREATE TABLE resting_hr_daily (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     date            DATE NOT NULL UNIQUE,
     resting_hr_bpm  INT NOT NULL,
-    source          VARCHAR(20) NOT NULL CHECK (source IN ('withings', 'derived'))
+    source          VARCHAR(20) NOT NULL CHECK (source IN ('withings', 'derived', 'manual'))
 );
 
 CREATE INDEX idx_resting_hr_date ON resting_hr_daily (date DESC);
